@@ -1,0 +1,21 @@
+idf_component_register(
+    SRCS
+        main.c
+        wifi.c
+        ws_client.c
+        audio.c
+        display.c
+        touch.c
+        power.c
+        sensors.c
+        ui.c
+    INCLUDE_DIRS
+        .
+    REQUIRES
+        esp WiFi
+        esp-tls
+        espwebsocket
+        lvgl
+        driver
+        spiffs
+)
