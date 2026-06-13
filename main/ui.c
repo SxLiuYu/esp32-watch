@@ -27,14 +27,14 @@ static void mic_click_cb(lv_event_t *ev)
 
 esp_err_t ui_init(void)
 {
-    lv_obj_t *scr = lv_scr_create();
+    lv_obj_t *scr = lv_obj_create(NULL);
 
     /* Status label at top - use default font so we don't depend on a
      * specific Montserrat size being enabled in lv_conf.h. */
     s_status_label = lv_label_create(scr);
     lv_label_set_text(s_status_label, s_status_text);
     lv_obj_align(s_status_label, LV_ALIGN_TOP_MID, 0, 20);
-    lv_obj_set_style_text_font(s_status_label, lv_font_default(), 0);
+    lv_obj_set_style_text_font(s_status_label, lv_font_get_default(), 0);
 
     /* Microphone button in center */
     s_mic_btn = lv_btn_create(scr);
@@ -55,7 +55,7 @@ esp_err_t ui_init(void)
     lv_bar_set_value(s_battery_bar, power_get_battery_percent(), LV_ANIM_OFF);
 
     lv_obj_t *bat_label = lv_label_create(scr);
-    lv_label_set_text(bat_label, LV_SYMBOL_BATTERY);
+    lv_label_set_text(bat_label, LV_SYMBOL_BATTERY_1);
     lv_obj_align(bat_label, LV_ALIGN_BOTTOM_MID, 0, -5);
 
     ESP_LOGI(TAG, "UI init done");
