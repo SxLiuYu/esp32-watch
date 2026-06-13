@@ -15,22 +15,20 @@ jobs:
         with:
           submodules: recursive
 
-      - uses: espressif/esp-idf-v5.3-ci-tools@main
-        with:
-          esp_idf_version: v5.3.2
-          target: esp32s3
-
       - name: Apply yuanfang-brain WS URL
         run: |
-          # 在 sdkconfig.defaults 注入 yuanfang-brain URL
-          echo "CONFIG_XIAOZHI_DEFAULT_WS_URL=\"ws://192.168.1.10:7104\"" >> sdkconfig.defaults
+          echo 'CONFIG_XIAOZHI_DEFAULT_WS_URL="ws://192.168.1.10:7104"' >> sdkconfig.defaults
 
-      - name: Build
-        run: |
-          idf.py set-target esp32s3
-          idf.py build
+      - name: Install ESP-IDF and Build
+        uses: rmshub/esp-idf-action@v6
+        with:
+          esp_idf_version: v5.3.2
+          esp_idf_target: esp32s3
+          command: |
+            idf.py build
 
       - name: Upload firmware artifacts
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: esp32-watch-firmware
@@ -40,5 +38,4 @@ jobs:
             build/partition_table/*.bin
             build/flash_args
             build/flasher_args.json
-          if-no-files-found: error
           retention-days: 14
