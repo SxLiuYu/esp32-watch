@@ -79,7 +79,7 @@ esp_err_t ws_client_init(const char *host, int port, const char *path)
         return ESP_FAIL;
     }
 
-    esp_websocket_client_register_events(s_client, WEBSOCKET_EVENT_ANY,
+    esp_websocket_register_events(s_client, WEBSOCKET_EVENT_ANY,
                                          ws_event_handler, NULL);
     esp_websocket_client_start(s_client);
     return ESP_OK;
