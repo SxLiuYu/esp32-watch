@@ -11,11 +11,4 @@ idf_component_register(
         ui.c
     INCLUDE_DIRS
         .
-    REQUIRES
-        esp WiFi
-        esp-tls
-        espwebsocket
-        lvgl
-        driver
-        spiffs
 )
