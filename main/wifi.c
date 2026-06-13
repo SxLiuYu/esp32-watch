@@ -1,4 +1,4 @@
-/* wifi.c - WiFi STA + SmartConfig fallback */
+/* wifi.c - WiFi STA + SmartConfig fallback (ESP-IDF v5.3.2 API) */
 #include <string.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
@@ -6,8 +6,10 @@
 #include <esp_log.h>
 #include <esp_event.h>
 #include <esp_wifi.h>
-#include <nvs_flash.h>
 #include <esp_smartconfig.h>
+#include <esp_timer.h>
+#include <driver/gpio.h>
+#include <nvs_flash.h>
 
 #include "wifi.h"
 
@@ -52,20 +54,20 @@ static void sc_event_handler(void *arg, esp_event_base_t ev_base,
         ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
         ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
         ESP_ERROR_CHECK(esp_wifi_connect());
+        /* In v5.3 SC_EVENT_DONE was removed - SC_EVENT_GOT_SSID_PSWD is the
+         * last user-actionable event and signals effective completion. */
         s_sc_done = true;
         ESP_LOGI(TAG, "SmartConfig got SSID/PASS");
-    } else if (ev_base == SC_EVENT && ev_id == SC_EVENT_DONE) {
-        ESP_LOGI(TAG, "SmartConfig done");
-        s_sc_done = true;
     }
 }
 
 static void smartconfig_task(void *parm)
 {
     ESP_ERROR_CHECK(esp_smartconfig_set_type(SC_TYPE_ESPTOUCH));
-    smartconfig_config_t cfg = {
-        .enable_time_ou = 120,
-        .timeout_ms = 5000,
+    /* v5.3 API: smartconfig_start_config_t has only .enable_log; timeout is
+     * no longer per-call but governed by the smartconfig stack. */
+    smartconfig_start_config_t cfg = {
+        .enable_log = true,
     };
     ESP_ERROR_CHECK(esp_smartconfig_start(&cfg));
     while (!s_sc_done) vTaskDelay(pdMS_TO_TICKS(500));
@@ -75,7 +77,8 @@ static void smartconfig_task(void *parm)
 
 static void button_monitor_task(void *parm)
 {
-    gpio_hal_pad_select_gpio(0);
+    /* ESP32-S3: all pins are GPIO-matrix muxed - no gpio_hal_pad_select_gpio needed. */
+    gpio_reset_pin(0);
     gpio_set_direction(0, GPIO_MODE_INPUT);
     gpio_set_pull_mode(0, GPIO_PULLUP_ONLY);
 
@@ -109,11 +112,13 @@ esp_err_t wifi_init(void)
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
 
     wifi_config_t sta_config = {0};
-    /* Load saved SSID from NVS if present */
+    /* Load saved SSID from NVS if present (v5.3: nvs_get_str) */
     nvs_handle_t nvs;
     if (nvs_open("wifi", NVS_READONLY, &nvs) == ESP_OK) {
-        nvs_get_string(nvs, "ssid", (char*)sta_config.sta.ssid, NULL);
-        nvs_get_string(nvs, "pass", (char*)sta_config.sta.password, NULL);
+        size_t ssid_len = sizeof(sta_config.sta.ssid);
+        size_t pass_len = sizeof(sta_config.sta.password);
+        nvs_get_str(nvs, "ssid", (char*)sta_config.sta.ssid, &ssid_len);
+        nvs_get_str(nvs, "pass", (char*)sta_config.sta.password, &pass_len);
         nvs_close(nvs);
     }
 

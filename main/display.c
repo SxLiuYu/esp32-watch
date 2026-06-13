@@ -1,4 +1,10 @@
-/* display.c - CO5300 QSPI AMOLED 410x502 init + LVGL rendering
+/* display.c - CO5300 QSPI AMOLED 410x502 (ESP-IDF v5.3.2 + LVGL 9.x)
+ *
+ * NOTE: The CO5300 panel driver is a third-party component (e.g.
+ *       esp_lcd_co5300) that we don't depend on. This module now only
+ *       sets up GPIO + LVGL display scaffolding so the firmware links.
+ *       Real panel init will be wired once the CO5300 driver is added.
+ *
  * QSPI pins: SDIO0=4, SDIO1=5, SDIO2=6, SDIO3=7, SCLK=11, CS=12, RESET=8, TE=13
  */
 #include <string.h>
@@ -7,74 +13,62 @@
 #include <esp_log.h>
 #include <esp_err.h>
 #include <driver/gpio.h>
-#include <esp_lcd_common.h>
-#include <esp_lcd_panel_co5300.h>
 #include <esp_lcd_panel_ops.h>
+#include <esp_lcd_panel_io.h>
 #include <lvgl.h>
 
 #include "display.h"
 
 static const char *TAG = "display";
-static lv_disp_t *s_disp;
-static lv_disp_draw_buf_t s_disp_buf;
+static lv_display_t *s_disp;
 static uint16_t s_fb[410 * 502] __attribute__((aligned(4)));
+
+/* LVGL 9.x flush callback - this is the single point where pixels get pushed
+ * to the panel. With no CO5300 driver yet we just log; the panel can be
+ * wired later without touching the rest of the UI. */
+static void lvgl_flush_cb(lv_display_t *disp, const lv_area_t *area, uint8_t *px_map)
+{
+    (void)disp;
+    (void)area;
+    (void)px_map;
+    lv_display_flush_ready(disp);
+}
 
 esp_err_t display_init(void)
 {
-    /* GPIO init for QSPI LCD */
-    gpio_hal_pad_select_gpio(4);
-    gpio_hal_pad_select_gpio(5);
-    gpio_hal_pad_select_gpio(6);
-    gpio_hal_pad_select_gpio(7);
-    gpio_hal_pad_select_gpio(11);
-    gpio_hal_pad_select_gpio(12);
-    gpio_hal_pad_select_gpio(8);
-    gpio_hal_pad_select_gpio(13);
+    /* GPIO setup for QSPI LCD - ESP32-S3 uses GPIO matrix, no pad select needed. */
+    gpio_reset_pin(4);
+    gpio_reset_pin(5);
+    gpio_reset_pin(6);
+    gpio_reset_pin(7);
+    gpio_reset_pin(8);   /* RESET */
+    gpio_reset_pin(11);  /* SCLK */
+    gpio_reset_pin(12);  /* CS */
+    gpio_reset_pin(13);  /* TE */
 
-    gpio_set_direction(8, GPIO_MODE_OUTPUT); /* RESET */
+    gpio_set_direction(8, GPIO_MODE_OUTPUT);  /* RESET */
     gpio_set_direction(12, GPIO_MODE_OUTPUT); /* CS */
-    gpio_set_direction(13, GPIO_MODE_INPUT); /* TE */
+    gpio_set_direction(13, GPIO_MODE_INPUT);  /* TE */
 
-    esp_lcd_panel_handle_t panel;
-    esp_lcd_panel_dev_config_t panel_cfg = {
-        .reset_gpio_num = 8,
-        .cs_gpio_num = 12,
-        .te_gpio_num = 13,
-        .flags = {
-            .swap_color_bytes = 0,
-        },
-        .bus_format = LCD_BUS_TYPE_QSPI,
-    };
-
-    /* QSPI bus config */
-    esp_lcd_qspi_bus_config_t bus_cfg = {
-        .data_gpio_nums = {4, 5, 6, 7},
-        .clk_gpio_num = 11,
-        .bus_width = 4,
-    };
-
-    ESP_ERROR_CHECK(esp_lcd_new_qspi_bus(&bus_cfg, &s_disp));
-    ESP_ERROR_CHECK(esp_lcd_new_panel_co5300(s_disp, &panel_cfg, &panel));
-
-    ESP_ERROR_CHECK(esp_lcd_panel_reset(panel));
-    ESP_ERROR_CHECK(esp_lcd_panel_init(panel));
-
-    /* LVGL init */
+    /* LVGL 9.x init - new API replaces lv_disp_drv_t + lv_disp_register_drv. */
     lv_init();
-    lv_disp_draw_buf_init(&s_disp_buf, s_fb, NULL, sizeof(s_fb) / sizeof(uint16_t));
-    lv_disp_drv_t disp_drv;
-    lv_disp_drv_init(&disp_drv);
-    disp_drv.hor_res = 410;
-    disp_drv.ver_res = 502;
-    disp_drv.draw_buf = &s_disp_buf;
-    disp_drv.flush_cb = NULL; /* Direct DMA flush - impl depends on board */
-    s_disp = lv_disp_register_drv(&disp_drv);
+    s_disp = lv_display_create(410, 502);
+    if (!s_disp) {
+        ESP_LOGE(TAG, "lv_display_create failed");
+        return ESP_FAIL;
+    }
+    lv_display_set_flush_cb(s_disp, lvgl_flush_cb);
+    lv_display_set_buffers(s_disp, s_fb, NULL,
+                           sizeof(s_fb), LV_DISPLAY_RENDER_MODE_PARTIAL);
 
-    ESP_LOGI(TAG, "Display init OK (CO5300 QSPI 410x502)");
+    ESP_LOGI(TAG, "Display init OK (CO5300 QSPI 410x502 - panel driver stub)");
     return ESP_OK;
 }
 
 void display_flush(void)
 {
-    /* Trigger display refresh */
+    /* Trigger display refresh - handled via lv_display flush_cb. */
+    if (s_disp) {
+        /* nothing to do here; LVGL timer handler drives refresh */
+    }
 }

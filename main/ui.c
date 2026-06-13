@@ -1,4 +1,4 @@
-/* ui.c - LVGL UI for voice frontend
+/* ui.c - LVGL 9.x UI for voice frontend
  * Shows: microphone icon, status text, battery indicator
  */
 #include <string.h>
@@ -29,11 +29,12 @@ esp_err_t ui_init(void)
 {
     lv_obj_t *scr = lv_scr_create();
 
-    /* Status label at top */
+    /* Status label at top - use default font so we don't depend on a
+     * specific Montserrat size being enabled in lv_conf.h. */
     s_status_label = lv_label_create(scr);
     lv_label_set_text(s_status_label, s_status_text);
     lv_obj_align(s_status_label, LV_ALIGN_TOP_MID, 0, 20);
-    lv_obj_set_style_text_font(s_status_label, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_font(s_status_label, lv_font_default(), 0);
 
     /* Microphone button in center */
     s_mic_btn = lv_btn_create(scr);
@@ -75,6 +76,6 @@ void ui_task(void)
     if (s_battery_bar) {
         lv_bar_set_value(s_battery_bar, power_get_battery_percent(), LV_ANIM_OFF);
     }
-    /* Handle LVGL tick */
-    lv_timer_handler_run_in_period(5);
+    /* LVGL 9.x: lv_timer_handler() (lv_timer_handler_run_in_period is gone). */
+    lv_timer_handler();
 }

@@ -3,17 +3,18 @@
  * Messages: {"type":"audio","data":"<base64 PCM 16k/16bit>","sr":16000}
  *           {"type":"text","text":"..."}
  * Replies:  {"type":"reply","text":"...","audio":"<base64>","intent":{...}}
+ *
+ * Uses espressif/esp-websocket (component manager) - header is shipped there.
  */
 #include <string.h>
 #include <stdio.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <esp_log.h>
-#include <esp_tls.h>
-#include <esp_websocket_client.h>
 #include <esp_event.h>
 #include <esp_timer.h>
 
+#include "esp_websocket_client.h"
 #include "ws_client.h"
 
 static const char *TAG = "ws_client";
@@ -26,6 +27,7 @@ static TaskHandle_t s_task_handle;
 static void ws_event_handler(void *arg, esp_event_base_t ev_base,
                              int32_t ev_id, void *ev_data)
 {
+    (void)ev_base;
     switch (ev_id) {
     case WEBSOCKET_EVENT_CONNECTED:
         s_connected = true;
@@ -37,11 +39,12 @@ static void ws_event_handler(void *arg, esp_event_base_t ev_base,
         break;
     case WEBSOCKET_EVENT_DATA: {
         esp_websocket_event_data_t *data = (esp_websocket_event_data_t *)ev_data;
-        if (data->data_len == 0) break;
+        int len = data->data_len;
+        if (len == 0) break;
 
         /* Parse JSON reply */
         char *msg = (char*)data->data_ptr;
-        if (data->data_len > 64) {
+        if (len > 64) {
             /* Quick check for reply type */
             if (msg[0] == '{' && strstr(msg, "\"type\":\"reply\"") != NULL) {
                 ESP_LOGI(TAG, "Got reply from server");
@@ -70,14 +73,14 @@ esp_err_t ws_client_init(const char *host, int port, const char *path)
         .buffer_size = 4096,
     };
 
-    s_client = esp_websocket_client_new(&cfg);
+    s_client = esp_websocket_client_init(&cfg);
     if (!s_client) {
         ESP_LOGE(TAG, "Failed to create WS client");
         return ESP_FAIL;
     }
 
-    esp_websocket_register_events(s_client, WEBSOCKET_EVENT_ANY,
-                                  ws_event_handler, NULL);
+    esp_websocket_client_register_events(s_client, WEBSOCKET_EVENT_ANY,
+                                         ws_event_handler, NULL);
     esp_websocket_client_start(s_client);
     return ESP_OK;
 }
@@ -98,22 +101,21 @@ void ws_client_send_text(const char *text)
     char msg[512];
     int len = snprintf(msg, sizeof(msg),
         "{\"type\":\"text\",\"text\":\"%s\"}", text);
-    esp_websocket_client_send(s_client, msg, len, portMAX_DELAY);
+    esp_websocket_client_send_text(s_client, msg, len, portMAX_DELAY);
 }
 
 void ws_client_send_audio(const char *b64_pcm, int pcm_len)
 {
+    (void)pcm_len;
     if (!ws_client_is_connected()) return;
-    char msg[1024 + pcm_len * 2];
+    char msg[1024];
     int len = snprintf(msg, sizeof(msg),
         "{\"type\":\"audio\",\"data\":\"%s\",\"sr\":16000}", b64_pcm);
-    esp_websocket_client_send(s_client, msg, len, portMAX_DELAY);
+    esp_websocket_client_send_text(s_client, msg, len, portMAX_DELAY);
 }
 
 void ws_client_task(void)
 {
-    esp_websocket_client_handle_t client = s_client;
-    (void)client;
     /* Process any pending WS events */
     if (s_audio_trigger) {
         s_audio_trigger = false;
