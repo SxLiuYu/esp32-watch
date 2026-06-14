@@ -21,6 +21,13 @@ static const char *TAG = "sensors";
 static bool s_sensors_ready = false;
 static i2c_port_t s_i2c_port = I2C_NUM_0;
 
+/* QMI8658 registers */
+#define QMI_WHOAMI   0x00
+#define QMI_CTRL1    0x01
+#define QMI_CTRL2    0x02
+#define QMI_CTRL3    0x03
+#define QMI_DATA     0x00
+
 static esp_err_t qmi_write_reg(uint8_t reg, uint8_t val)
 {
     if (!s_sensors_ready) return ESP_ERR_INVALID_STATE;
