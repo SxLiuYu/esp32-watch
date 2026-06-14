@@ -126,7 +126,7 @@ esp_err_t wifi_init(void)
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &sta_config));
     ESP_ERROR_CHECK(esp_wifi_start());
 
-    xTaskCreatePinnedToCore(button_monitor_task, "btn_mon", 2048, NULL, 4, NULL, 0);
+    xTaskCreatePinnedToCore(button_monitor_task, "btn_mon", 4096, NULL, 4, NULL, 0);
     return ESP_OK;
 }
 
@@ -136,7 +136,7 @@ bool wifi_connect_with_smartconfig(void)
     ESP_LOGI(TAG, "Starting SmartConfig (ESPTOUCH)...");
     ESP_ERROR_CHECK(esp_event_handler_register(SC_EVENT, ESP_EVENT_ANY_ID,
                                               sc_event_handler, NULL));
-    xTaskCreatePinnedToCore(smartconfig_task, "sc_task", 4096, NULL, 3, NULL, 0);
+    xTaskCreatePinnedToCore(smartconfig_task, "sc_task", 6144, NULL, 3, NULL, 0);
 
     /* Wait up to 120s for SmartConfig */
     int wait = 0;
