@@ -35,6 +35,9 @@ static void wifi_event_handler(void *arg, esp_event_base_t ev_base,
         esp_wifi_connect();
     } else if (ev_base == WIFI_EVENT && ev_id == WIFI_EVENT_STA_START) {
         ESP_LOGI(TAG, "WiFi STA started");
+    } else if (ev_base == IP_EVENT && ev_id == IP_EVENT_STA_GOT_IP) {
+        ip_event_got_ip_t *ev = (ip_event_got_ip_t *)ev_data;
+        ESP_LOGI(TAG, "*** Got IP: " IPSTR " ***", IP2STR(&ev->ip_info.ip));
     }
 }
 
