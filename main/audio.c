@@ -74,21 +74,27 @@ esp_err_t audio_init(void)
 
     /* Create I2S TX channel for playback (master, full-duplex flag not needed). */
     i2s_chan_config_t tx_chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_0, I2S_ROLE_MASTER);
-    ESP_ERROR_CHECK(i2s_new_channel(&tx_chan_cfg, &s_i2s_tx, NULL));
+    esp_err_t _ae = i2s_new_channel(&tx_chan_cfg, &s_i2s_tx, NULL);
+    if (_ae != ESP_OK) { ESP_LOGW(TAG, "i2s_new_channel TX failed: %s - audio disabled", esp_err_to_name(_ae)); return ESP_OK; }
 
     /* Create I2S RX channel for recording (slave, separate handle). */
     i2s_chan_config_t rx_chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_0, I2S_ROLE_SLAVE);
-    ESP_ERROR_CHECK(i2s_new_channel(&rx_chan_cfg, NULL, &s_i2s_rx));
+    _ae = i2s_new_channel(&rx_chan_cfg, NULL, &s_i2s_rx);
+    if (_ae != ESP_OK) { ESP_LOGW(TAG, "i2s_new_channel RX failed: %s - audio disabled", esp_err_to_name(_ae)); return ESP_OK; }
 
     /* Init ES8311 TX */
     i2s_std_config_t tx_cfg = es8311_tx_cfg();
-    ESP_ERROR_CHECK(i2s_channel_init_std_mode(s_i2s_tx, &tx_cfg));
-    ESP_ERROR_CHECK(i2s_channel_enable(s_i2s_tx));
+    _ae = i2s_channel_init_std_mode(s_i2s_tx, &tx_cfg);
+    if (_ae != ESP_OK) { ESP_LOGW(TAG, "TX init failed: %s", esp_err_to_name(_ae)); return ESP_OK; }
+    _ae = i2s_channel_enable(s_i2s_tx);
+    if (_ae != ESP_OK) { ESP_LOGW(TAG, "TX enable failed: %s", esp_err_to_name(_ae)); return ESP_OK; }
 
     /* Init ES7210 RX */
     i2s_std_config_t rx_cfg = es7210_rx_cfg();
-    ESP_ERROR_CHECK(i2s_channel_init_std_mode(s_i2s_rx, &rx_cfg));
-    ESP_ERROR_CHECK(i2s_channel_enable(s_i2s_rx));
+    _ae = i2s_channel_init_std_mode(s_i2s_rx, &rx_cfg);
+    if (_ae != ESP_OK) { ESP_LOGW(TAG, "RX init failed: %s", esp_err_to_name(_ae)); return ESP_OK; }
+    _ae = i2s_channel_enable(s_i2s_rx);
+    if (_ae != ESP_OK) { ESP_LOGW(TAG, "RX enable failed: %s", esp_err_to_name(_ae)); return ESP_OK; }
 
     s_init_ok = true;
     ESP_LOGI(TAG, "Audio init done (16kHz mono PCM)");
