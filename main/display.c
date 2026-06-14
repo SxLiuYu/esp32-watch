@@ -21,7 +21,9 @@
 
 static const char *TAG = "display";
 static lv_display_t *s_disp;
-static uint16_t s_fb[410 * 502] __attribute__((aligned(4)));
+/* Partial-mode framebuffer: only need ~10% of full (40 rows) for QSPI partial refresh.
+ * 410 * 40 * 2 = 32KB - fits comfortably in internal DRAM. */
+static uint16_t s_fb[410 * 40] __attribute__((aligned(4)));
 
 /* LVGL 9.x flush callback - this is the single point where pixels get pushed
  * to the panel. With no CO5300 driver yet we just log; the panel can be
