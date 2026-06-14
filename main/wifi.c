@@ -101,14 +101,16 @@ static void button_monitor_task(void *parm)
 
 esp_err_t wifi_init(void)
 {
-    ESP_ERROR_CHECK(esp_event_loop_create_default());
+    /* ESP-IDF v5.3: must init esp_netif FIRST, then create default WiFi STA
+     * netif, then call esp_wifi_init. Do NOT call esp_event_loop_create_default()
+     * explicitly - esp_netif_init() does that internally. */
+    ESP_ERROR_CHECK(esp_netif_init());
+    esp_netif_create_default_wifi_sta();
+
     ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID,
                                                wifi_event_handler, NULL));
     ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP,
                                                wifi_event_handler, NULL));
-
-    /* ESP-IDF v5.x: must create default WiFi STA netif for DHCP to work */
-    esp_netif_create_default_wifi_sta();
 
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
