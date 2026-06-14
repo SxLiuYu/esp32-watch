@@ -1,4 +1,8 @@
-/* wifi.c - WiFi STA + SmartConfig fallback (ESP-IDF v5.3.2 API) */
+/* wifi.c - WiFi STA + SmartConfig fallback (ESP-IDF v5.3.2 API)
+ *
+ * Modified 2026-06-14: split wifi_init() (driver only) and
+ * wifi_connect_sta(ssid, pass) (set config + start + connect).
+ */
 #include <string.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
@@ -27,12 +31,10 @@ static void wifi_event_handler(void *arg, esp_event_base_t ev_base,
         ESP_LOGI(TAG, "WiFi STA connected");
     } else if (ev_base == WIFI_EVENT && ev_id == WIFI_EVENT_STA_DISCONNECTED) {
         s_connected = false;
-        ESP_LOGW(TAG, "WiFi disconnected");
-    } else if (ev_base == IP_EVENT && ev_id == IP_EVENT_STA_GOT_IP) {
-        ip_event_got_ip_t *ev = (ip_event_got_ip_t *)ev_data;
-        ESP_LOGI(TAG, "Got IP: " IPSTR, IP2STR(&ev->ip_info.ip));
-    } else if (ev_base == WIFI_EVENT && ev_id == WIFI_EVENT_STA_START) {
+        ESP_LOGW(TAG, "WiFi disconnected, retrying...");
         esp_wifi_connect();
+    } else if (ev_base == WIFI_EVENT && ev_id == WIFI_EVENT_STA_START) {
+        ESP_LOGI(TAG, "WiFi STA started");
     }
 }
 
@@ -54,8 +56,6 @@ static void sc_event_handler(void *arg, esp_event_base_t ev_base,
         ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
         ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
         ESP_ERROR_CHECK(esp_wifi_connect());
-        /* In v5.3 SC_EVENT_DONE was removed - SC_EVENT_GOT_SSID_PSWD is the
-         * last user-actionable event and signals effective completion. */
         s_sc_done = true;
         ESP_LOGI(TAG, "SmartConfig got SSID/PASS");
     }
@@ -64,11 +64,7 @@ static void sc_event_handler(void *arg, esp_event_base_t ev_base,
 static void smartconfig_task(void *parm)
 {
     ESP_ERROR_CHECK(esp_smartconfig_set_type(SC_TYPE_ESPTOUCH));
-    /* v5.3 API: smartconfig_start_config_t has only .enable_log; timeout is
-     * no longer per-call but governed by the smartconfig stack. */
-    smartconfig_start_config_t cfg = {
-        .enable_log = true,
-    };
+    smartconfig_start_config_t cfg = { .enable_log = true };
     ESP_ERROR_CHECK(esp_smartconfig_start(&cfg));
     while (!s_sc_done) vTaskDelay(pdMS_TO_TICKS(500));
     esp_smartconfig_stop();
@@ -77,7 +73,6 @@ static void smartconfig_task(void *parm)
 
 static void button_monitor_task(void *parm)
 {
-    /* ESP32-S3: all pins are GPIO-matrix muxed - no gpio_hal_pad_select_gpio needed. */
     gpio_reset_pin(0);
     gpio_set_direction(0, GPIO_MODE_INPUT);
     gpio_set_pull_mode(0, GPIO_PULLUP_ONLY);
@@ -87,7 +82,7 @@ static void button_monitor_task(void *parm)
     while (1) {
         bool cur = gpio_get_level(0);
         int64_t now = esp_timer_get_time();
-        if (!cur && last) { /* falling edge */
+        if (!cur && last) {
             press_time = now;
         } else if (cur && !last && press_time > 0) {
             int64_t dur = now - press_time;
@@ -110,24 +105,40 @@ esp_err_t wifi_init(void)
 
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
-
-    wifi_config_t sta_config = {0};
-    /* Load saved SSID from NVS if present (v5.3: nvs_get_str) */
-    nvs_handle_t nvs;
-    if (nvs_open("wifi", NVS_READONLY, &nvs) == ESP_OK) {
-        size_t ssid_len = sizeof(sta_config.sta.ssid);
-        size_t pass_len = sizeof(sta_config.sta.password);
-        nvs_get_str(nvs, "ssid", (char*)sta_config.sta.ssid, &ssid_len);
-        nvs_get_str(nvs, "pass", (char*)sta_config.sta.password, &pass_len);
-        nvs_close(nvs);
-    }
-
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
-    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &sta_config));
     ESP_ERROR_CHECK(esp_wifi_start());
 
     xTaskCreatePinnedToCore(button_monitor_task, "btn_mon", 4096, NULL, 4, NULL, 0);
     return ESP_OK;
+}
+
+bool wifi_connect_sta(const char *ssid, const char *pass)
+{
+    if (!ssid || !pass) {
+        ESP_LOGE(TAG, "ssid or pass is NULL");
+        return false;
+    }
+    wifi_config_t sta_config = {0};
+    strncpy((char*)sta_config.sta.ssid, ssid, sizeof(sta_config.sta.ssid) - 1);
+    strncpy((char*)sta_config.sta.password, pass, sizeof(sta_config.sta.password) - 1);
+    ESP_LOGI(TAG, "Connecting to SSID: %s", ssid);
+    esp_err_t err;
+    err = esp_wifi_set_config(WIFI_IF_STA, &sta_config);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "set_config failed: %s", esp_err_to_name(err));
+        return false;
+    }
+    err = esp_wifi_connect();
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "connect failed: %s", esp_err_to_name(err));
+        return false;
+    }
+    int wait = 0;
+    while (!s_connected && wait < 40) {
+        vTaskDelay(pdMS_TO_TICKS(500));
+        wait++;
+    }
+    return s_connected;
 }
 
 bool wifi_connect_with_smartconfig(void)
@@ -138,7 +149,6 @@ bool wifi_connect_with_smartconfig(void)
                                               sc_event_handler, NULL));
     xTaskCreatePinnedToCore(smartconfig_task, "sc_task", 6144, NULL, 3, NULL, 0);
 
-    /* Wait up to 120s for SmartConfig */
     int wait = 0;
     while (!s_sc_done && wait < 240) {
         vTaskDelay(pdMS_TO_TICKS(500));
