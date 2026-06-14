@@ -1,7 +1,10 @@
 /* wifi.c - WiFi STA + SmartConfig fallback (ESP-IDF v5.3.2 API)
  *
- * Modified 2026-06-14: split wifi_init() (driver only) and
- * wifi_connect_sta(ssid, pass) (set config + start + connect).
+ * Modified 2026-06-14:
+ * - Idempotent init: esp_netif_create_default_wifi_sta() is NOT idempotent
+ *   in IDF v5.3.2 (returns ESP_ERR_INVALID_STATE on second call -> abort).
+ *   We guard with a flag.
+ * - Split wifi_init() (driver only) and wifi_connect_sta(ssid, pass).
  */
 #include <string.h>
 #include <freertos/FreeRTOS.h>
@@ -21,6 +24,7 @@
 static const char *TAG = "wifi";
 static bool s_connected = false;
 static bool s_sc_done = false;
+static bool s_netif_ready = false;
 static void (*s_btn_cb)(void*) = NULL;
 static void *s_btn_arg = NULL;
 
@@ -101,11 +105,23 @@ static void button_monitor_task(void *parm)
 
 esp_err_t wifi_init(void)
 {
-    /* ESP-IDF v5.3: must init esp_netif FIRST, then create default WiFi STA
-     * netif, then call esp_wifi_init. Do NOT call esp_event_loop_create_default()
-     * explicitly - esp_netif_init() does that internally. */
-    ESP_ERROR_CHECK(esp_netif_init());
-    esp_netif_create_default_wifi_sta();
+    /* Idempotent netif init.
+     * NOTE: esp_netif_init() is idempotent (safe to call multiple times).
+     * esp_netif_create_default_wifi_sta() is NOT idempotent in IDF v5.3.2.
+     * We guard with a flag and return ESP_OK if already created. */
+    esp_err_t r = esp_netif_init();
+    if (r != ESP_OK && r != ESP_ERR_INVALID_STATE) {
+        ESP_LOGE(TAG, "esp_netif_init failed: %s", esp_err_to_name(r));
+        return r;
+    }
+    if (!s_netif_ready) {
+        esp_netif_t *sta = esp_netif_create_default_wifi_sta();
+        if (sta == NULL) {
+            /* Could be already created by another component - just continue */
+            ESP_LOGW(TAG, "esp_netif_create_default_wifi_sta returned NULL (may already exist) - continuing");
+        }
+        s_netif_ready = true;
+    }
 
     ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID,
                                                wifi_event_handler, NULL));
