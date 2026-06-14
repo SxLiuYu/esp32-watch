@@ -153,5 +153,12 @@ static void main_task(void *pvParameters)
 
 void app_main(void)
 {
+    /* THE FIRST log we should see if app_main runs at all.
+     * If this MARK doesn't appear, esp_app_start/psram/nvs is stuck. */
+    esp_log_level_set("*", ESP_LOG_INFO);
+    printf("MARK0: app_main entered\n");
+    fflush(stdout);
     xTaskCreatePinnedToCore(main_task, "main_task", 8192, NULL, 5, NULL, 1);
+    printf("MARK0b: main_task created\n");
+    fflush(stdout);
 }
