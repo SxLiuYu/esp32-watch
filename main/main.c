@@ -61,36 +61,49 @@ static void main_task(void *pvParameters)
 {
     bool wifi_connected = false;
 
+    ESP_LOGI(TAG, "=== MARK: main_task start ===");
     /* Initialize NVS */
     esp_err_t ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
         nvs_flash_erase();
         nvs_flash_init();
     }
+    ESP_LOGI(TAG, "=== MARK: nvs done ===");
 
     /* Initialize power management first (AXP2101) - soft-fail OK */
     ESP_ERROR_CHECK(power_init());
+    ESP_LOGI(TAG, "=== MARK: power done ===");
 
+    ESP_LOGI(TAG, "=== MARK: pre-display ===");
     /* Initialize display */
     ESP_ERROR_CHECK(display_init());
+    ESP_LOGI(TAG, "=== MARK: display done ===");
     ui_init();
+    ESP_LOGI(TAG, "=== MARK: ui done ===");
 
     /* Initialize touch - soft-fail OK */
     touch_init();
+    ESP_LOGI(TAG, "=== MARK: touch done ===");
 
     /* Initialize sensors - soft-fail OK */
     sensors_init();
+    ESP_LOGI(TAG, "=== MARK: sensors done ===");
 
     /* Initialize audio codec - soft-fail OK */
     ESP_ERROR_CHECK(audio_init());
+    ESP_LOGI(TAG, "=== MARK: audio done ===");
 
+    ESP_LOGI(TAG, "=== MARK: pre-wifi_init ===");
     /* Connect WiFi - directly with hardcoded credentials */
     ESP_ERROR_CHECK(wifi_init());
+    ESP_LOGI(TAG, "=== MARK: wifi_init done ===");
     /* Register IP event to know when we have a real IP */
     ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP,
                                                ip_event_handler, NULL));
     s_got_ip = false;
+    ESP_LOGI(TAG, "=== MARK: pre-connect ===");
     wifi_connected = wifi_connect_sta(WIFI_SSID, WIFI_PASS);
+    ESP_LOGI(TAG, "=== MARK: post-connect=%d ip=%d ===", wifi_connected, s_got_ip);
     if (!wifi_connected) {
         ESP_LOGW(TAG, "WiFi connect failed, retrying in 30s...");
         vTaskDelay(pdMS_TO_TICKS(30000));
