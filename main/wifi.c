@@ -11,6 +11,7 @@
 #include <esp_event.h>
 #include <esp_wifi.h>
 #include <esp_smartconfig.h>
+#include <esp_netif.h>
 #include <esp_timer.h>
 #include <driver/gpio.h>
 #include <nvs_flash.h>
@@ -105,6 +106,9 @@ esp_err_t wifi_init(void)
                                                wifi_event_handler, NULL));
     ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP,
                                                wifi_event_handler, NULL));
+
+    /* ESP-IDF v5.x: must create default WiFi STA netif for DHCP to work */
+    esp_netif_create_default_wifi_sta();
 
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
